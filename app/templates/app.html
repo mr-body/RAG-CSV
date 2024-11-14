@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Response Display</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/themes/prism.min.css" rel="stylesheet" />
+    <style>
+        #responses {
+            margin-top: 20px;
+        }
+
+        .response {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            /* Mantém quebras de linha e espaços em branco */
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>API Response Display</h1>
+    <form id="questionForm">
+        <input type="text" id="questionInput" placeholder="Digite sua pergunta" required>
+        <button type="submit">Enviar</button>
+    </form>
+    <div id="responses"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.25.0/components/prism-json.min.js"></script>
+    
+    <script>
+        document.getElementById('questionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const questionInput = document.getElementById('questionInput');
+            const responsesDiv = document.getElementById('responses');
+
+            const question = questionInput.value;
+            questionInput.value = '';  // Limpa o campo de entrada
+            responsesDiv.innerHTML = '';  // Limpa as respostas anteriores
+
+            try {
+                const responseStream = await fetch('/morning/ollama/api/generate/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: question }),
+                });
+
+                const reader = responseStream.body.getReader();
+                const decoder = new TextDecoder();
+                let responseBuffer = '';
+                let completeResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    responseBuffer += decoder.decode(value, { stream: true });
+
+                    const lines = responseBuffer.split('\n');
+                    responseBuffer = lines.pop(); // Mantém a última parte não processada
+
+                    for (const line of lines) {
+                        try {
+                            const json = JSON.parse(line);
+                            if (json.response) {
+                                completeResponse += json.response; // Acumula a resposta
+                                
+                                const responseElement = document.createElement('div');
+                                responseElement.classList.add('response');
+
+                                // Processa Markdown e destaca código
+                                responseElement.innerHTML = marked.parse(completeResponse);
+                                responsesDiv.innerHTML = ''; // Limpa as respostas antigas
+                                responsesDiv.appendChild(responseElement);
+
+                                // Realça blocos de código adicionados
+                                Prism.highlightAll();
+                            }
+                            if (json.done) {
+                                return;
+                            }
+                        } catch (error) {
+                            console.error('Erro ao decodificar JSON:', line);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Erro na solicitação:', error);
+            }
+        });
+    </script>
+</body>
+
+</html>
